@@ -21,8 +21,9 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: config.client_url,
-    methods: ["GET", "POST"]
+    origin: [config.client_url, "http://localhost:5173", "https://chocolate1-gamma.vercel.app"],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -82,7 +83,7 @@ io.on('connection', (socket) => {
 });
 
 app.use(cors({
-  origin: config.client_url,
+  origin: [config.client_url, "http://localhost:5173", "https://chocolate1-gamma.vercel.app"],
   credentials: true
 }));
 app.use(limiter);
