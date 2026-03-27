@@ -199,7 +199,7 @@ export const deleteProduct = async (req: Request, res: Response) => {
     
     // Emit real-time change
     const io = req.app.get('socketio');
-    io.emit('productDeleted', id);
+    if (io) io.emit('productDeleted', id);
 
     res.status(200).json({ message: 'Product deleted successfully' });
   } catch (error: any) {
