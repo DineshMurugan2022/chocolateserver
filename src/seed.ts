@@ -140,7 +140,7 @@ const seedDB = async () => {
       await connectRedis();
       await deleteCache('products');
       console.log('Cache invalidated for Registry');
-    } catch (cacheErr) {
+    } catch {
       console.log('Redis not reachable, skipping cache invalidation');
     }
 

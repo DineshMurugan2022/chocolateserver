@@ -48,6 +48,7 @@ const authLimiter = rateLimit({
 
 let viewerCount = 0;
 const productViewers: Record<string, number> = {};
+const socketProducts = new Map<string, Set<string>>();
 
 io.on('connection', (socket) => {
   viewerCount++;
@@ -56,12 +57,22 @@ io.on('connection', (socket) => {
   
   socket.on('joinProduct', (productId) => {
     socket.join(`product:${productId}`);
-    productViewers[productId] = (productViewers[productId] || 0) + 1;
+    const joined = socketProducts.get(socket.id) || new Set<string>();
+    if (!joined.has(productId)) {
+      joined.add(productId);
+      productViewers[productId] = (productViewers[productId] || 0) + 1;
+      socketProducts.set(socket.id, joined);
+    }
     io.to(`product:${productId}`).emit('updateProductViewers', { productId, count: productViewers[productId] });
   });
 
   socket.on('leaveProduct', (productId) => {
     socket.leave(`product:${productId}`);
+    const joined = socketProducts.get(socket.id);
+    if (joined && joined.has(productId)) {
+      joined.delete(productId);
+      socketProducts.set(socket.id, joined);
+    }
     if (productViewers[productId]) {
       productViewers[productId] = Math.max(0, productViewers[productId] - 1);
       io.to(`product:${productId}`).emit('updateProductViewers', { productId, count: productViewers[productId] });
@@ -71,7 +82,16 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     viewerCount--;
     io.emit('updateViewerCount', viewerCount);
-    // Cleanup product viewers (simplification: just emit general update, or track socket rooms)
+    const joined = socketProducts.get(socket.id);
+    if (joined) {
+      joined.forEach((productId) => {
+        if (productViewers[productId]) {
+          productViewers[productId] = Math.max(0, productViewers[productId] - 1);
+          io.to(`product:${productId}`).emit('updateProductViewers', { productId, count: productViewers[productId] });
+        }
+      });
+      socketProducts.delete(socket.id);
+    }
     console.log('Client disconnected', 'Total viewers:', viewerCount);
   });
 
@@ -110,7 +130,7 @@ mongoose.connect(config.mongodb_uri, {
     console.log('Connected to MongoDB');
     connectRedis();
   })
-  .catch((err: any) => console.log('MongoDB connection error:', err));
+  .catch((err: unknown) => console.log('MongoDB connection error:', err));
 
 app.get('/', (req: express.Request, res: express.Response) => {
   res.send('ChocoLux API is running... Visit <a href="/api-docs">/api-docs</a> for documentation.');
@@ -127,8 +147,11 @@ process.on('uncaughtException', (err) => {
   console.error(log);
 });
 
-process.on('unhandledRejection', (reason: any) => {
-  const log = `[${new Date().toISOString()}] UNHANDLED REJECTION: ${reason?.message || reason}\nStack: ${reason?.stack}\n`;
+process.on('unhandledRejection', (reason: unknown) => {
+  const error = reason instanceof Error ? reason : undefined;
+  const message = error?.message ?? String(reason);
+  const stack = error?.stack ?? '';
+  const log = `[${new Date().toISOString()}] UNHANDLED REJECTION: ${message}\nStack: ${stack}\n`;
   fs.appendFileSync('fatal_error.log', log);
   console.error(log);
 });

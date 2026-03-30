@@ -1,19 +1,21 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { config } from '../config.js';
+import type { AuthRequest } from '../types/requests.js';
 
-export const protect = async (req: any, res: Response, next: NextFunction) => {
+export const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
   let token;
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
       token = req.headers.authorization.split(' ')[1];
       
-      if (!process.env.JWT_SECRET) {
+      if (!config.jwt_secret) {
         console.error('CRITICAL: JWT_SECRET is not defined in environment variables');
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
+      const decoded = jwt.verify(token, config.jwt_secret) as { id: string };
       
       const user = await User.findById(decoded.id).select('-password');
       if (!user) {
@@ -23,9 +25,10 @@ export const protect = async (req: any, res: Response, next: NextFunction) => {
 
       req.user = user;
       next();
-    } catch (error: any) {
-      console.error('Auth Middleware Error:', error.message);
-      res.status(401).json({ message: `Not authorized, token failed: ${error.message}` });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Auth Middleware Error:', message);
+      res.status(401).json({ message: `Not authorized, token failed: ${message}` });
     }
   }
 
@@ -35,7 +38,7 @@ export const protect = async (req: any, res: Response, next: NextFunction) => {
   }
 };
 
-export const admin = (req: any, res: Response, next: NextFunction) => {
+export const admin = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (req.user && req.user.role === 'admin') {
     next();
   } else {

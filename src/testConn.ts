@@ -11,11 +11,18 @@ const testConn = async () => {
     });
     console.log('Successfully connected to MongoDB Atlas!');
     process.exit(0);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Connection failed!');
-    console.error('Error Name:', err.name);
-    console.error('Error Message:', err.message);
-    if (err.reason) console.error('Reason:', err.reason);
+    if (err instanceof Error) {
+      console.error('Error Name:', err.name);
+      console.error('Error Message:', err.message);
+    } else {
+      console.error('Error Message:', String(err));
+    }
+    if (typeof err === 'object' && err !== null && 'reason' in err) {
+      const reason = (err as { reason?: unknown }).reason;
+      if (reason) console.error('Reason:', reason);
+    }
     process.exit(1);
   }
 };

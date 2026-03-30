@@ -1,12 +1,15 @@
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import User from '../models/User.js';
 import { NotFoundError } from '../utils/errors.js';
+import type { AuthRequest } from '../types/requests.js';
 
-export const getWishlist = async (req: Request, res: Response) => {
+type ToggleWishlistBody = { productId: string };
+
+export const getWishlist = async (req: AuthRequest, res: Response) => {
   try {
     // Assuming user ID is available in req.user (from auth middleware)
     // If auth is not fully implemented, we'll use a placeholder or handle guests
-    const userId = (req as any).user?.id; 
+    const userId = req.user?._id?.toString(); 
     
     if (!userId) return res.status(401).json({ message: 'Authentication required' });
 
@@ -14,23 +17,27 @@ export const getWishlist = async (req: Request, res: Response) => {
     if (!user) throw new NotFoundError('User not found');
 
     res.status(200).json(user.wishlist);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const toggleWishlist = async (req: Request, res: Response) => {
+export const toggleWishlist = async (
+  req: AuthRequest<ToggleWishlistBody>,
+  res: Response
+) => {
   try {
     const { productId } = req.body;
-    const userId = (req as any).user?.id;
+    const userId = req.user?._id?.toString();
 
     if (!userId) return res.status(401).json({ message: 'Authentication required' });
 
     const user = await User.findById(userId);
     if (!user) throw new NotFoundError('User not found');
 
-    const wishlist = (user as any).wishlist || [];
-    const index = wishlist.findIndex((id: any) => id.toString() === productId.toString());
+    const wishlist = user.wishlist ?? [];
+    const index = wishlist.findIndex((id) => id.toString() === productId.toString());
 
     if (index === -1) {
       wishlist.push(productId);
@@ -38,12 +45,13 @@ export const toggleWishlist = async (req: Request, res: Response) => {
       wishlist.splice(index, 1);
     }
 
-    (user as any).wishlist = wishlist;
+    user.wishlist = wishlist;
     await user.save();
 
     const updatedUser = await User.findById(userId).populate('wishlist');
     res.status(200).json(updatedUser?.wishlist || []);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };

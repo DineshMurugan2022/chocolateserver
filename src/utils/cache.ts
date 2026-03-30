@@ -21,13 +21,13 @@ export const connectRedis = async () => {
   }
 };
 
-export const getCache = async (key: string) => {
+export const getCache = async <T>(key: string): Promise<T | null> => {
   if (!isConnected) return null;
   const data = await client.get(key);
-  return data ? JSON.parse(data) : null;
+  return data ? (JSON.parse(data) as T) : null;
 };
 
-export const setCache = async (key: string, value: any, duration: number = 3600) => {
+export const setCache = async <T>(key: string, value: T, duration: number = 3600) => {
   if (!isConnected) return;
   await client.setEx(key, duration, JSON.stringify(value));
 };

@@ -2,12 +2,22 @@ import type { Request, Response } from 'express';
 import Review from '../models/Review.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
+import type { AuthRequest } from '../types/requests.js';
 
-export const addReview = async (req: any, res: Response) => {
+type AddReviewParams = { productId: string };
+type AddReviewBody = { rating: number; comment: string };
+
+export const addReview = async (
+  req: AuthRequest<AddReviewBody, AddReviewParams>,
+  res: Response
+) => {
   try {
     const { productId } = req.params;
     const { rating, comment } = req.body;
-    const userId = req.user.id;
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
 
     // Check if product exists
     const product = await Product.findById(productId);
@@ -48,20 +58,22 @@ export const addReview = async (req: any, res: Response) => {
     await product.save();
 
     res.status(201).json(review);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const getProductReviews = async (req: Request, res: Response) => {
+export const getProductReviews = async (req: Request<{ productId: string }>, res: Response) => {
   try {
-    const productId = req.params['productId'] as string;
-    const reviews = await Review.find({ product: productId as any })
+    const productId = req.params.productId;
+    const reviews = await Review.find({ product: productId })
       .populate('user', 'name')
       .sort({ createdAt: -1 });
     
     res.json(reviews);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };

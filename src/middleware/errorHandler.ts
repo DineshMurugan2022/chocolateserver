@@ -6,7 +6,7 @@ export const errorHandler = (
   err: Error | AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   let statusCode = 500;
   let message = 'Something went wrong!';

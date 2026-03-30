@@ -3,64 +3,79 @@ import Product from '../models/Product.js';
 import { uploadImage } from '../utils/cloudinary.js';
 import { getCache, setCache, deleteCache } from '../utils/cache.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
-import fs from 'fs';
 import mongoose from 'mongoose';
+
+type ProductQuery = {
+  $or?: Array<{
+    name?: { $regex: string; $options: 'i' };
+    description?: { $regex: string; $options: 'i' };
+  }>;
+  category?: string;
+  price?: { $gte?: number; $lte?: number };
+};
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const { search, category, minPrice, maxPrice, sort } = req.query;
+    const searchValue = typeof search === 'string' ? search : undefined;
+    const categoryValue = typeof category === 'string' ? category : undefined;
+    const minPriceValue = typeof minPrice === 'string' ? minPrice : undefined;
+    const maxPriceValue = typeof maxPrice === 'string' ? maxPrice : undefined;
+    const sortValue = typeof sort === 'string' ? sort : undefined;
     
     // Default: use cache for all products if no filters are applied
-    if (!search && !category && !minPrice && !maxPrice && !sort) {
+    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue) {
       const cachedProducts = await getCache('products');
       if (cachedProducts) {
         return res.status(200).json(cachedProducts);
       }
     }
 
-    let query: any = {};
-    if (search) {
+    const query: ProductQuery = {};
+    if (searchValue) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { name: { $regex: searchValue, $options: 'i' } },
+        { description: { $regex: searchValue, $options: 'i' } }
       ];
     }
-    if (category) query.category = category;
-    if (minPrice || maxPrice) {
+    if (categoryValue) query.category = categoryValue;
+    if (minPriceValue || maxPriceValue) {
       query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
+      if (minPriceValue) query.price.$gte = Number(minPriceValue);
+      if (maxPriceValue) query.price.$lte = Number(maxPriceValue);
     }
 
-    let sortOption: any = { createdAt: -1 };
-    if (sort === 'priceLow') sortOption = { price: 1 };
-    if (sort === 'priceHigh') sortOption = { price: -1 };
-    if (sort === 'name') sortOption = { name: 1 };
+    let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
+    if (sortValue === 'priceLow') sortOption = { price: 1 };
+    if (sortValue === 'priceHigh') sortOption = { price: -1 };
+    if (sortValue === 'name') sortOption = { name: 1 };
 
     const products = await Product.find(query).sort(sortOption);
 
     // Only cache the "all products" view
-    if (!search && !category && !minPrice && !maxPrice && !sort) {
+    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue) {
       await setCache('products', products, 3600);
     }
     
     res.status(200).json(products);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const getProductById = async (req: Request, res: Response) => {
+export const getProductById = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) throw new NotFoundError('Product not found');
     res.status(200).json(product);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const getRelatedProducts = async (req: Request, res: Response) => {
+export const getRelatedProducts = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const product = await Product.findById(id);
@@ -72,8 +87,9 @@ export const getRelatedProducts = async (req: Request, res: Response) => {
     }).limit(4);
 
     res.status(200).json(related);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
@@ -120,13 +136,14 @@ export const createProduct = async (req: Request, res: Response) => {
     if (io) io.emit('productCreated', newProduct);
     
     res.status(201).json(newProduct);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create Product Error:', error);
-    res.status(500).json({ message: error.message });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const updateProduct = async (req: Request, res: Response) => {
+export const updateProduct = async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const product = { ...req.body };
   const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
@@ -138,7 +155,7 @@ export const updateProduct = async (req: Request, res: Response) => {
   delete product.updatedAt;
 
   try {
-    if (!mongoose.Types.ObjectId.isValid(id as string)) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new BadRequestError('Invalid Product ID format');
     }
 
@@ -182,13 +199,14 @@ export const updateProduct = async (req: Request, res: Response) => {
     }
 
     res.status(200).json(updatedProduct);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Update Product Error:', error);
-    res.status(500).json({ message: error.message });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };
 
-export const deleteProduct = async (req: Request, res: Response) => {
+export const deleteProduct = async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   try {
     const deletedProduct = await Product.findByIdAndDelete(id);
@@ -202,8 +220,9 @@ export const deleteProduct = async (req: Request, res: Response) => {
     if (io) io.emit('productDeleted', id);
 
     res.status(200).json({ message: 'Product deleted successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Delete Product Error:', error);
-    res.status(500).json({ message: error.message });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message });
   }
 };

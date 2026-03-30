@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcrypt';
 
 export interface IUser extends Document {
+  _id: mongoose.Types.ObjectId;
   name: string;
   email: string;
   password: string;
@@ -18,7 +19,7 @@ const UserSchema: Schema = new Schema({
 }, { timestamps: true });
 
 // Hash password before saving
-UserSchema.pre('save', async function(this: any) {
+UserSchema.pre('save', async function(this: IUser) {
   if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
 });

@@ -3,9 +3,14 @@ import { z } from 'zod';
 
 dotenv.config();
 
+const mongoUriSchema = z.string().default('mongodb://localhost:27017/chocolux').refine(
+  (value) => value.startsWith('mongodb://') || value.startsWith('mongodb+srv://'),
+  { message: 'Invalid MongoDB URI format' }
+);
+
 const envSchema = z.object({
   PORT: z.string().default('5000'),
-  MONGODB_URI: z.string().default('mongodb://localhost:27017/chocolux'),
+  MONGODB_URI: mongoUriSchema,
   JWT_SECRET: z.string().min(8).default('secret_at_least_8_chars'),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
@@ -18,6 +23,10 @@ const envSchema = z.object({
 });
 
 const env = envSchema.parse(process.env);
+
+if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'secret_at_least_8_chars') {
+  console.warn('JWT_SECRET is using the default value in production. Set a strong secret in the environment.');
+}
 
 export const config = {
   port: parseInt(env.PORT, 10),
