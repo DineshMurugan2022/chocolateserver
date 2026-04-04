@@ -40,7 +40,7 @@ export const toggleWishlist = async (
     const index = wishlist.findIndex((id) => id.toString() === productId.toString());
 
     if (index === -1) {
-      wishlist.push(productId);
+      wishlist.push(productId as any);
     } else {
       wishlist.splice(index, 1);
     }

@@ -12,19 +12,23 @@ type ProductQuery = {
   }>;
   category?: string;
   price?: { $gte?: number; $lte?: number };
+  brand?: { $regex: string; $options: 'i' } | string;
+  events?: { $in: string[] } | string;
 };
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const { search, category, minPrice, maxPrice, sort } = req.query;
+    const { search, category, minPrice, maxPrice, sort, brand, event } = req.query;
     const searchValue = typeof search === 'string' ? search : undefined;
     const categoryValue = typeof category === 'string' ? category : undefined;
     const minPriceValue = typeof minPrice === 'string' ? minPrice : undefined;
     const maxPriceValue = typeof maxPrice === 'string' ? maxPrice : undefined;
     const sortValue = typeof sort === 'string' ? sort : undefined;
+    const brandValue = typeof brand === 'string' ? brand : undefined;
+    const eventValue = typeof event === 'string' ? event : undefined;
     
     // Default: use cache for all products if no filters are applied
-    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue) {
+    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue && !brandValue && !eventValue) {
       const cachedProducts = await getCache('products');
       if (cachedProducts) {
         return res.status(200).json(cachedProducts);
@@ -39,6 +43,8 @@ export const getProducts = async (req: Request, res: Response) => {
       ];
     }
     if (categoryValue) query.category = categoryValue;
+    if (brandValue) query.brand = brandValue; // or use regex for partial matches if needed
+    if (eventValue) query.events = { $in: [eventValue] }; // Assuming event field in query matches one event
     if (minPriceValue || maxPriceValue) {
       query.price = {};
       if (minPriceValue) query.price.$gte = Number(minPriceValue);
@@ -53,7 +59,7 @@ export const getProducts = async (req: Request, res: Response) => {
     const products = await Product.find(query).sort(sortOption);
 
     // Only cache the "all products" view
-    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue) {
+    if (!searchValue && !categoryValue && !minPriceValue && !maxPriceValue && !sortValue && !brandValue && !eventValue) {
       await setCache('products', products, 3600);
     }
     

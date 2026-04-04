@@ -15,7 +15,7 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
         console.error('CRITICAL: JWT_SECRET is not defined in environment variables');
       }
 
-      const decoded = jwt.verify(token, config.jwt_secret) as { id: string };
+      const decoded = jwt.verify(token as string, config.jwt_secret as string) as unknown as { id: string };
       
       const user = await User.findById(decoded.id).select('-password');
       if (!user) {

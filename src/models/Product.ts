@@ -13,6 +13,8 @@ export interface IProduct extends Document {
   weight: string;
   rating: number;
   reviews: number;
+  brand?: string;
+  events?: string[];
 }
 
 const ProductSchema: Schema = new Schema({
@@ -28,6 +30,8 @@ const ProductSchema: Schema = new Schema({
   weight: { type: String },
   rating: { type: Number, default: 0 },
   reviews: { type: Number, default: 0 },
+  brand: { type: String },
+  events: [{ type: String }],
 }, { timestamps: true });
 
 ProductSchema.index({ name: 'text', description: 'text', category: 'text' });
