@@ -1,25 +1,24 @@
 import type { Response } from 'express';
 import User from '../models/User.js';
-import { NotFoundError } from '../utils/errors.js';
+import { NotFoundError, UnauthorizedError } from '../utils/errors.js';
 import type { AuthRequest } from '../types/requests.js';
+import { Types } from 'mongoose';
 
 type ToggleWishlistBody = { productId: string };
 
 export const getWishlist = async (req: AuthRequest, res: Response) => {
   try {
-    // Assuming user ID is available in req.user (from auth middleware)
-    // If auth is not fully implemented, we'll use a placeholder or handle guests
-    const userId = req.user?._id?.toString(); 
-    
-    if (!userId) return res.status(401).json({ message: 'Authentication required' });
+    const userId = req.user?._id;
+    if (!userId) throw new UnauthorizedError('Authentication required');
 
     const user = await User.findById(userId).populate('wishlist');
-    if (!user) throw new NotFoundError('User not found');
+    if (!user) throw new NotFoundError('User profile not found');
 
     res.status(200).json(user.wishlist);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ message });
+    const status = error instanceof Error && 'status' in error ? (error as any).status : 500;
+    const message = error instanceof Error ? error.message : 'Internal Server Error during wishlist retrieval';
+    res.status(status).json({ message });
   }
 };
 
@@ -29,29 +28,33 @@ export const toggleWishlist = async (
 ) => {
   try {
     const { productId } = req.body;
-    const userId = req.user?._id?.toString();
+    const userId = req.user?._id;
 
-    if (!userId) return res.status(401).json({ message: 'Authentication required' });
+    if (!userId) throw new UnauthorizedError('Authentication required');
+    if (!productId) throw new NotFoundError('Product identifier is missing');
 
     const user = await User.findById(userId);
-    if (!user) throw new NotFoundError('User not found');
+    if (!user) throw new NotFoundError('User profile not found');
 
-    const wishlist = user.wishlist ?? [];
-    const index = wishlist.findIndex((id) => id.toString() === productId.toString());
+    const productObjectId = new Types.ObjectId(productId);
+    const wishlist = user.wishlist || [];
+    const itemIndex = wishlist.findIndex(id => id.toString() === productId);
 
-    if (index === -1) {
-      wishlist.push(productId as any);
+    if (itemIndex === -1) {
+      wishlist.push(productObjectId as any);
     } else {
-      wishlist.splice(index, 1);
+      wishlist.splice(itemIndex, 1);
     }
 
     user.wishlist = wishlist;
     await user.save();
 
+    // Populate the newly updated wishlist
     const updatedUser = await User.findById(userId).populate('wishlist');
     res.status(200).json(updatedUser?.wishlist || []);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ message });
+    const status = error instanceof Error && 'status' in error ? (error as any).status : 500;
+    const message = error instanceof Error ? error.message : 'Internal Server Error during wishlist modification';
+    res.status(status).json({ message });
   }
 };

@@ -36,3 +36,28 @@ export const deleteCache = async (key: string) => {
   if (!isConnected) return;
   await client.del(key);
 };
+
+export const incr = async (key: string) => {
+  if (!isConnected) return 0;
+  return await client.incr(key);
+};
+
+export const decr = async (key: string) => {
+  if (!isConnected) return 0;
+  const val = await client.decr(key);
+  if (val < 0) {
+    await client.set(key, 0);
+    return 0;
+  }
+  return val;
+};
+
+export const hIncrBy = async (key: string, field: string, value: number) => {
+  if (!isConnected) return 0;
+  return await client.hIncrBy(key, field, value);
+};
+
+export const hGetAll = async (key: string) => {
+  if (!isConnected) return {};
+  return await client.hGetAll(key);
+};

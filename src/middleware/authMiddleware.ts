@@ -8,9 +8,13 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
   let token;
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+
+  if (token) {
     try {
-      token = req.headers.authorization.split(' ')[1];
-      
       if (!config.jwt_secret) {
         console.error('CRITICAL: JWT_SECRET is not defined in environment variables');
       }
@@ -30,10 +34,8 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
       console.error('Auth Middleware Error:', message);
       res.status(401).json({ message: `Not authorized, token failed: ${message}` });
     }
-  }
-
-  if (!token) {
-    console.warn('Auth Failure: No token provided in headers');
+  } else {
+    console.warn('Auth Failure: No token found in headers or cookies');
     res.status(401).json({ message: 'Not authorized, no token' });
   }
 };

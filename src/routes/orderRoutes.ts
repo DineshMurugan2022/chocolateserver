@@ -9,13 +9,16 @@ import {
 } from '../controllers/orderController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
+import { validate } from '../middleware/validate.js';
+import { createOrderSchema, verifyPaymentSchema, updateOrderStatusSchema } from '../utils/schemas.js';
+
 const router = express.Router();
 
-router.post('/', protect, createOrder);
+router.post('/', protect, validate(createOrderSchema), createOrder);
 router.get('/', protect, admin, getOrders);
 router.get('/my-orders', protect, getUserOrders);
-router.post('/razorpay/order', protect, createRazorpayOrder);
-router.post('/razorpay/verify', protect, verifyPayment);
-router.patch('/:id/status', protect, admin, updateOrderStatus);
+router.post('/razorpay/order', protect, validate(createOrderSchema), createRazorpayOrder);
+router.post('/razorpay/verify', protect, validate(verifyPaymentSchema), verifyPayment);
+router.patch('/:id/status', protect, admin, validate(updateOrderStatusSchema), updateOrderStatus);
 
 export default router;

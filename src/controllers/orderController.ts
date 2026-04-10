@@ -57,12 +57,17 @@ const razorpay = new Razorpay({
   key_secret: config.razorpay.key_secret!,
 });
 
-const updateProductStock = async (items: OrderItem[]) => {
+import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
+
+// ... existing types ...
+
+const updateProductStock = async (items: OrderItem[], session?: mongoose.ClientSession) => {
   for (const item of items) {
     const product = await Product.findOneAndUpdate(
       { _id: item.product, stock: { $gte: item.quantity } },
       { $inc: { stock: -item.quantity } },
-      { new: true }
+      { new: true, session }
     );
     if (!product) {
       throw new Error(`Insufficient stock for product: ${item.name}`);
@@ -71,24 +76,18 @@ const updateProductStock = async (items: OrderItem[]) => {
 };
 
 export const createRazorpayOrder = async (req: AuthRequest<RazorpayOrderBody>, res: Response) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { items, receipt, shippingAddress } = req.body;
 
-    if (!req.user?._id) {
-      return res.status(401).json({ message: 'Authentication required' });
-    }
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'Cart is empty' });
-    }
-    if (!shippingAddress) {
-      return res.status(400).json({ message: 'Shipping address is required' });
-    }
+    if (!req.user?._id) return res.status(401).json({ message: 'Authentication required' });
 
     // Calculate total on server to prevent price tampering
     let calculatedAmount = 0;
     const orderItems: OrderItem[] = [];
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product).session(session);
       if (!product) throw new Error(`Product ${item.name} not found`);
       const quantity = Number(item.quantity || 1);
       calculatedAmount += product.price * quantity;
@@ -101,28 +100,31 @@ export const createRazorpayOrder = async (req: AuthRequest<RazorpayOrderBody>, r
     }
 
     const options = {
-      amount: Math.round(calculatedAmount * 100), // paise
+      amount: Math.round(calculatedAmount * 100),
       currency: 'INR',
       receipt: receipt || `receipt_${Date.now()}`,
     };
 
     const order = await razorpay.orders.create(options);
 
-    // Create a pending order in DB linked to Razorpay order
-    const pendingOrder = await Order.create({
+    const pendingOrder = await Order.create([{
       user: req.user._id,
       items: orderItems,
       shippingAddress,
       totalPrice: calculatedAmount,
       status: 'pending',
       razorpay_order_id: order.id
-    });
+    }], { session });
 
-    res.status(200).json({ order, orderId: pendingOrder._id });
+    await session.commitTransaction();
+    res.status(200).json({ order, orderId: pendingOrder[0]!._id });
   } catch (error: unknown) {
-    console.error('Razorpay Order Error:', error);
+    await session.abortTransaction();
+    logger.error('Razorpay Order Transaction Error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ message: 'Error creating Razorpay order', error: message });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -130,15 +132,10 @@ export const verifyPayment = async (
   req: Request<Record<string, string>, unknown, VerifyPaymentBody>,
   res: Response
 ) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-    } = req.body;
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({ status: 'failure', message: 'Missing Razorpay verification fields' });
-    }
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
@@ -146,70 +143,63 @@ export const verifyPayment = async (
       .update(body.toString())
       .digest('hex');
 
-    if (expectedSignature === razorpay_signature) {
-      const existingOrder = await Order.findOne({ razorpay_order_id });
-      if (!existingOrder) {
-        return res.status(404).json({ status: 'failure', message: 'Order not found' });
-      }
-
-      if (existingOrder.status === 'paid') {
-        return res.status(200).json({ status: 'success', order: existingOrder });
-      }
-
-      // ATOMIC STOCK CHECK AND UPDATE
-      try {
-        await updateProductStock(existingOrder.items as OrderItem[]);
-      } catch (stockError: unknown) {
-        const message = stockError instanceof Error ? stockError.message : 'Stock update failed';
-        return res.status(400).json({ status: 'failure', message });
-      }
-
-      existingOrder.razorpay_payment_id = razorpay_payment_id;
-      existingOrder.status = 'paid';
-      const savedOrder = await existingOrder.save();
-      
-      const io = req.app.get('socketio');
-      if (io) {
-        io.emit('newOrder', savedOrder);
-        // Social proof notification
-        if (savedOrder.items?.[0] && savedOrder.shippingAddress) {
-          io.emit('newSale', { 
-            productName: savedOrder.items[0].name,
-            customerName: savedOrder.shippingAddress.name
-          });
-        }
-      }
-
-      res.status(200).json({ status: 'success', order: savedOrder });
-    } else {
-      res.status(400).json({ status: 'failure', message: 'Invalid signature' });
+    if (expectedSignature !== razorpay_signature) {
+      throw new Error('Invalid payment signature');
     }
+
+    const existingOrder = await Order.findOne({ razorpay_order_id }).session(session);
+    if (!existingOrder) {
+      return res.status(404).json({ status: 'failure', message: 'Order not found' });
+    }
+
+    if (existingOrder.status === 'paid') {
+      await session.commitTransaction();
+      return res.status(200).json({ status: 'success', order: existingOrder });
+    }
+
+    // ATOMIC STOCK CHECK AND UPDATE WITHIN TRANSACTION
+    await updateProductStock(existingOrder.items as OrderItem[], session);
+
+    existingOrder.razorpay_payment_id = razorpay_payment_id;
+    existingOrder.status = 'paid';
+    const savedOrder = await existingOrder.save({ session });
+    
+    await session.commitTransaction();
+
+    const io = req.app.get('socketio');
+    if (io) {
+      io.emit('newOrder', savedOrder);
+      if (savedOrder.items?.[0] && savedOrder.shippingAddress) {
+        io.emit('newSale', { 
+          productName: savedOrder.items[0].name,
+          customerName: savedOrder.shippingAddress.name
+        });
+      }
+    }
+
+    res.status(200).json({ status: 'success', order: savedOrder });
   } catch (error: unknown) {
-    console.error('Payment Verification Error:', error);
+    await session.abortTransaction();
+    logger.error('Payment Verification Transaction Error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ message: 'Error verifying payment', error: message });
+    res.status(400).json({ status: 'failure', message });
+  } finally {
+    session.endSession();
   }
 };
 
 export const createOrder = async (req: AuthRequest<CreateOrderBody>, res: Response) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { items, shippingAddress } = req.body;
 
-    if (!req.user?._id) {
-      return res.status(401).json({ message: 'Authentication required' });
-    }
-
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'Cart is empty' });
-    }
-    if (!shippingAddress) {
-      return res.status(400).json({ message: 'Shipping address is required' });
-    }
+    if (!req.user?._id) return res.status(401).json({ message: 'Authentication required' });
 
     const preparedItems: OrderItem[] = [];
     let calculatedTotal = 0;
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product).session(session);
       if (!product) throw new Error(`Product ${item.name} not found`);
       const quantity = Number(item.quantity || 1);
       calculatedTotal += product.price * quantity;
@@ -222,12 +212,7 @@ export const createOrder = async (req: AuthRequest<CreateOrderBody>, res: Respon
     }
 
     // ATOMIC STOCK CHECK AND UPDATE
-    try {
-      await updateProductStock(preparedItems);
-    } catch (stockError: unknown) {
-      const message = stockError instanceof Error ? stockError.message : 'Stock update failed';
-      return res.status(400).json({ message });
-    }
+    await updateProductStock(preparedItems, session);
 
     const order = new Order({
       user: req.user._id,
@@ -237,13 +222,12 @@ export const createOrder = async (req: AuthRequest<CreateOrderBody>, res: Respon
       status: 'pending'
     });
 
-    const savedOrder = await order.save();
+    const savedOrder = await order.save({ session });
+    await session.commitTransaction();
     
-    // Emit via socket if needed for admin real-time updates
     const io = req.app.get('socketio');
     if (io) {
       io.emit('newOrder', savedOrder);
-      // Social proof notification
       if (savedOrder.items?.[0] && savedOrder.shippingAddress) {
         io.emit('newSale', { 
           productName: savedOrder.items[0].name,
@@ -254,9 +238,12 @@ export const createOrder = async (req: AuthRequest<CreateOrderBody>, res: Respon
 
     res.status(201).json(savedOrder);
   } catch (error: unknown) {
-    console.error('Error creating order:', error);
+    await session.abortTransaction();
+    logger.error('Manual Order Transaction Error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ message: 'Error creating order', error: message });
+  } finally {
+    session.endSession();
   }
 };
 
