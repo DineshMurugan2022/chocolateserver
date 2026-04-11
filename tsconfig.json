@@ -12,19 +12,15 @@
     "jsx": "react-jsx",
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "composite": true,
+    "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@chocolux/shared/types": ["../shared/types/index.ts"],
-      "@chocolux/shared/*": ["../shared/*"],
-      "@shared/*": ["../shared/*"]
+      "@/*": ["./src/*"]
     },
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src"],
-  "references": [
-    { "path": "../shared" }
-  ]
+  "include": ["src"]
 }
+
 
