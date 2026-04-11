@@ -24,7 +24,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: config.client_url,
+    origin: config.allowed_origins,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -108,14 +108,14 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["'self'", "data:", "https://images.unsplash.com", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:5000", config.client_url],
+      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:5000", ...config.allowed_origins],
     },
   },
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(cookieParser());
 app.use(cors({
-  origin: config.client_url,
+  origin: config.allowed_origins,
   credentials: true
 }));
 app.use(limiter);
