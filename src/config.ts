@@ -28,7 +28,9 @@ if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'secret_at_least_8_chars
   console.warn('JWT_SECRET is using the default value in production. Set a strong secret in the environment.');
 }
 
-const allowedOrigins = env.CLIENT_URL.split(',').map(url => url.trim());
+const allowedOrigins = env.CLIENT_URL
+  ? env.CLIENT_URL.split(',').map(url => url.trim().replace(/\/$/, ''))
+  : ['http://localhost:5173'];
 
 export const config = {
   port: parseInt(env.PORT, 10),

@@ -24,18 +24,12 @@ const app = express();
 const httpServer = createServer(app);
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = config.allowed_origins;
-    // Check if the exact origin is allowed, or if it's a vercel subdomain of the primary project
-    const isAllowed = allowedOrigins.some(ao => {
-      const normalizedAO = ao.replace(/\/$/, '');
-      const normalizedOrigin = origin.replace(/\/$/, '');
-      return normalizedAO === normalizedOrigin;
-    });
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed = config.allowed_origins.some(ao => ao === normalizedOrigin);
 
-    if (isAllowed || (config.node_env === 'development')) {
+    if (isAllowed || config.node_env === 'development') {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -46,6 +40,24 @@ const corsOptions: cors.CorsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
 };
 
+// CORS Preflight - Manual Handler for maximum reliability
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string;
+  const normalizedOrigin = origin ? origin.replace(/\/$/, '') : '';
+  
+  if (config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Initialize Socket.io with robust CORS
 const io = new Server(httpServer, {
   cors: corsOptions
@@ -53,7 +65,7 @@ const io = new Server(httpServer, {
 
 const PORT = config.port;
 
-// Base Middlewares - applied BEFORE everything else to ensure CORS/Security headers
+// Base Middlewares
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -72,21 +84,13 @@ app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
 
-// Rate Limiting - applied after CORS
+// Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 1000,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { message: 'Too many requests from this IP' }
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { message: 'Too many auth attempts' }
 });
 
 const socketProducts = new Map<string, Set<string>>();
@@ -107,36 +111,9 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('leaveProduct', async (productId) => {
-    socket.leave(`product:${productId}`);
-    const joined = socketProducts.get(socket.id);
-    if (joined && joined.has(productId)) {
-      joined.delete(productId);
-      socketProducts.set(socket.id, joined);
-      const count = await hIncrBy('product_viewers', productId, -1);
-      io.to(`product:${productId}`).emit('updateProductViewers', { productId, count: Math.max(0, count) });
-    }
-  });
-
   socket.on('disconnect', async () => {
     const currentTotal = await decr('viewer_count');
     io.emit('updateViewerCount', currentTotal);
-    
-    const joined = socketProducts.get(socket.id);
-    if (joined) {
-      for (const productId of joined) {
-        const count = await hIncrBy('product_viewers', productId, -1);
-        io.to(`product:${productId}`).emit('updateProductViewers', { productId, count: Math.max(0, count) });
-      }
-      socketProducts.delete(socket.id);
-    }
-    console.log('Client disconnected', 'Total viewers:', currentTotal);
-  });
-
-  // Simulate or trigger real sales updates
-  socket.on('triggerSale', (saleData) => {
-    // saleData: { productName, customerName, time }
-    io.emit('newSale', saleData);
   });
 });
 
@@ -144,7 +121,7 @@ app.use(limiter);
 app.set('socketio', io);
 
 // Routes
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
@@ -154,37 +131,38 @@ app.use('/api/reviews', reviewRoutes);
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Centralized Error Handling
-app.use(errorHandler);
-
-process.on('uncaughtException', (err) => {
-  logger.error('UNCAUGHT EXCEPTION', err);
-});
-
-process.on('unhandledRejection', (reason: unknown) => {
-  logger.error('UNHANDLED REJECTION', { reason });
+// Centralized Error Handling - ensure CORS is still present
+app.use((err: any, req: any, res: any, next: any) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  errorHandler(err, req, res, next);
 });
 
 const startServer = async () => {
+  // 1. START LISTENING IMMEDIATELY for Render health checks
+  httpServer.listen(PORT, () => {
+    logger.info(`Server is running on port ${PORT}. Connecting to database in background...`);
+  });
+
+  // 2. CONNECT TO DATABASE IN BACKGROUND
   try {
     await mongoose.connect(config.mongodb_uri, {
-      serverSelectionTimeoutMS: 5000,
-      family: 4 // Force IPv4
+      serverSelectionTimeoutMS: 10000,
+      family: 4 
     });
     logger.info('Connected to MongoDB');
 
     try {
       await connectRedis();
     } catch (redisErr) {
-      logger.warn('Failed to connect to Redis. Running without caching/viewer features.', redisErr);
+      logger.warn('Failed to connect to Redis.', redisErr);
     }
-
-    httpServer.listen(PORT, () => {
-      logger.info(`Server is running on http://localhost:${PORT}`);
-    });
   } catch (err: unknown) {
-    logger.error('Fatal initialization error:', err);
-    process.exit(1);
+    logger.error('Database connection error:', err);
+    // We don't exit here so the server stays alive and can respond with errors
   }
 };
 
