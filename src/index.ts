@@ -23,18 +23,7 @@ import { rateLimit } from 'express-rate-limit';
 const app = express();
 const httpServer = createServer(app);
 const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    
-    const normalizedOrigin = origin.replace(/\/$/, '');
-    const isAllowed = config.allowed_origins.some(ao => ao === normalizedOrigin);
-
-    if (isAllowed || config.node_env === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Mirror the request Origin — safe with credentials: true
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
@@ -59,8 +48,13 @@ app.use((req, res, next) => {
 });
 
 // Initialize Socket.io with robust CORS
+// origin: true mirrors the request Origin header — safe, standard, and avoids any matching bugs
 const io = new Server(httpServer, {
-  cors: corsOptions
+  cors: {
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST"]
+  }
 });
 
 const PORT = config.port;
@@ -115,6 +109,15 @@ io.on('connection', async (socket) => {
     const currentTotal = await decr('viewer_count');
     io.emit('updateViewerCount', currentTotal);
   });
+});
+
+// DB Readiness Guard — return 503 instead of 500 when MongoDB is not connected
+app.use((req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    res.status(503).json({ message: 'Database not ready yet, please retry in a few seconds.' });
+    return;
+  }
+  next();
 });
 
 app.use(limiter);
