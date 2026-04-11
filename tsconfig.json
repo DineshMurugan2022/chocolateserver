@@ -15,6 +15,7 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
+      "@chocolux/shared/types": ["../shared/types/index.ts"],
       "@chocolux/shared/*": ["../shared/*"],
       "@shared/*": ["../shared/*"]
     },
