@@ -22,17 +22,57 @@ import { rateLimit } from 'express-rate-limit';
 
 const app = express();
 const httpServer = createServer(app);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = config.allowed_origins;
+    // Check if the exact origin is allowed, or if it's a vercel subdomain of the primary project
+    const isAllowed = allowedOrigins.some(ao => {
+      const normalizedAO = ao.replace(/\/$/, '');
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      return normalizedAO === normalizedOrigin;
+    });
+
+    if (isAllowed || (config.node_env === 'development')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+};
+
+// Initialize Socket.io with robust CORS
 const io = new Server(httpServer, {
-  cors: {
-    origin: config.allowed_origins,
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+  cors: corsOptions
 });
 
 const PORT = config.port;
 
-// Rate Limiting
+// Base Middlewares - applied BEFORE everything else to ensure CORS/Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "https://images.unsplash.com", "https://res.cloudinary.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:5000", ...config.allowed_origins],
+    },
+  },
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+app.use(cors(corsOptions));
+app.use(cookieParser());
+app.use(express.json());
+
+// Rate Limiting - applied after CORS
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 1000,
@@ -100,26 +140,7 @@ io.on('connection', async (socket) => {
   });
 });
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      imgSrc: ["'self'", "data:", "https://images.unsplash.com", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:5000", ...config.allowed_origins],
-    },
-  },
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.use(cookieParser());
-app.use(cors({
-  origin: config.allowed_origins,
-  credentials: true
-}));
 app.use(limiter);
-app.use(express.json());
 app.set('socketio', io);
 
 // Routes
