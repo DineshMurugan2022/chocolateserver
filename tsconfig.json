@@ -15,6 +15,7 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
+      "@chocolux/shared/*": ["../shared/*"],
       "@shared/*": ["../shared/*"]
     },
     "moduleDetection": "force",
