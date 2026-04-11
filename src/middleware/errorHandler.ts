@@ -20,7 +20,7 @@ export const errorHandler = (
   } else if (err instanceof ZodError) {
     statusCode = 400;
     message = 'Validation failed';
-    details = err.errors.map(e => ({ path: e.path.join('.'), message: e.message }));
+    details = err.issues.map((e) => ({ path: e.path.join('.'), message: e.message }));
   } else if (err instanceof Error) {
     message = err.message;
   }

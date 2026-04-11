@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { Types } from 'mongoose';
-import Order from '../models/Order.js';
-import Product from '../models/Product.js';
+import Order, { type IOrder } from '../models/Order.js';
+import Product, { type IProduct } from '../models/Product.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { config } from '../config.js';
@@ -64,10 +64,14 @@ import { logger } from '../utils/logger.js';
 
 const updateProductStock = async (items: OrderItem[], session?: mongoose.ClientSession) => {
   for (const item of items) {
+    const query: any = { 
+      _id: item.product, 
+      stock: { $gte: item.quantity } 
+    };
     const product = await Product.findOneAndUpdate(
-      { _id: item.product, stock: { $gte: item.quantity } },
-      { $inc: { stock: -item.quantity } },
-      { new: true, session }
+      query,
+      { $inc: { stock: -item.quantity } } as any,
+      { new: true, session: session ?? null }
     );
     if (!product) {
       throw new Error(`Insufficient stock for product: ${item.name}`);
@@ -107,17 +111,22 @@ export const createRazorpayOrder = async (req: AuthRequest<RazorpayOrderBody>, r
 
     const order = await razorpay.orders.create(options);
 
-    const pendingOrder = await Order.create([{
+    const pendingOrderData: any = {
       user: req.user._id,
       items: orderItems,
-      shippingAddress,
       totalPrice: calculatedAmount,
       status: 'pending',
       razorpay_order_id: order.id
-    }], { session });
+    };
+    
+    if (shippingAddress) {
+      pendingOrderData.shippingAddress = shippingAddress;
+    }
+
+    const pendingOrder = await Order.create([pendingOrderData], { session: session ?? null });
 
     await session.commitTransaction();
-    res.status(200).json({ order, orderId: pendingOrder[0]!._id });
+    res.status(200).json({ order, orderId: (pendingOrder[0] as IOrder)._id });
   } catch (error: unknown) {
     await session.abortTransaction();
     logger.error('Razorpay Order Transaction Error:', error);
@@ -147,7 +156,11 @@ export const verifyPayment = async (
       throw new Error('Invalid payment signature');
     }
 
-    const existingOrder = await Order.findOne({ razorpay_order_id }).session(session);
+    if (!razorpay_order_id) {
+      return res.status(400).json({ message: 'Razorpay order ID is required' });
+    }
+
+    const existingOrder = await Order.findOne({ razorpay_order_id }).session(session) as IOrder | null;
     if (!existingOrder) {
       return res.status(404).json({ status: 'failure', message: 'Order not found' });
     }
@@ -160,9 +173,11 @@ export const verifyPayment = async (
     // ATOMIC STOCK CHECK AND UPDATE WITHIN TRANSACTION
     await updateProductStock(existingOrder.items as OrderItem[], session);
 
-    existingOrder.razorpay_payment_id = razorpay_payment_id;
+    if (razorpay_payment_id) {
+      existingOrder.razorpay_payment_id = razorpay_payment_id;
+    }
     existingOrder.status = 'paid';
-    const savedOrder = await existingOrder.save({ session });
+    const savedOrder = await existingOrder.save({ session: session ?? null });
     
     await session.commitTransaction();
 

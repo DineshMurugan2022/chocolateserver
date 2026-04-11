@@ -1,4 +1,31 @@
-import mongoose from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
+
+export interface IOrderItem {
+  product: Types.ObjectId;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+export interface IShippingAddress {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  address: string;
+  city: string;
+  postalCode: string;
+}
+
+export interface IOrder extends Document {
+  user: Types.ObjectId;
+  items: IOrderItem[];
+  shippingAddress: IShippingAddress;
+  totalPrice: number;
+  status: 'pending' | 'processing' | 'completed' | 'cancelled' | 'paid';
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  createdAt: Date;
+}
 
 const OrderItemSchema = new mongoose.Schema({
   product: {
@@ -43,4 +70,5 @@ const OrderSchema = new mongoose.Schema({
   }
 });
 
-export default mongoose.model('Order', OrderSchema);
+export default mongoose.model<IOrder>('Order', OrderSchema);
+
