@@ -11,7 +11,7 @@ import wishlistRoutes from './routes/wishlistRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger.js';
-import { connectRedis, incr, decr, hIncrBy, hGetAll } from './utils/cache.js';
+import { connectRedis, incr, decr, hIncrBy, hGetAll, disconnectRedis } from './utils/cache.js';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { logger } from './utils/logger.js';
@@ -106,8 +106,21 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('disconnect', async () => {
+    // 1. Decrement Global Viewers
     const currentTotal = await decr('viewer_count');
     io.emit('updateViewerCount', currentTotal);
+
+    // 2. Decrement Product Viewers for all joined products
+    const joined = socketProducts.get(socket.id);
+    if (joined) {
+      for (const productId of joined) {
+        const count = await hIncrBy('product_viewers', productId, -1);
+        io.to(`product:${productId}`).emit('updateProductViewers', { productId, count });
+      }
+      socketProducts.delete(socket.id);
+    }
+    
+    console.log('Client disconnected:', socket.id, 'Active viewers:', currentTotal);
   });
 });
 
@@ -176,6 +189,7 @@ const gracefulShutdown = () => {
   logger.info('Shutting down gracefully...');
   httpServer.close(async () => {
     await mongoose.connection.close();
+    await disconnectRedis();
     logger.info('Services closed.');
     process.exit(0);
   });

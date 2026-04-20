@@ -10,14 +10,14 @@ import {
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 import { validate } from '../middleware/validate.js';
-import { createOrderSchema, verifyPaymentSchema, updateOrderStatusSchema } from '../utils/schemas.js';
+import { orderCreateSchema, verifyPaymentSchema, updateOrderStatusSchema } from '../validations/orderSchema.js';
 
 const router = express.Router();
 
-router.post('/', protect, validate(createOrderSchema), createOrder);
+router.post('/', protect, validate(orderCreateSchema), createOrder);
 router.get('/', protect, admin, getOrders);
 router.get('/my-orders', protect, getUserOrders);
-router.post('/razorpay/order', protect, validate(createOrderSchema), createRazorpayOrder);
+router.post('/razorpay/order', protect, validate(orderCreateSchema), createRazorpayOrder);
 router.post('/razorpay/verify', protect, validate(verifyPaymentSchema), verifyPayment);
 router.patch('/:id/status', protect, admin, validate(updateOrderStatusSchema), updateOrderStatus);
 

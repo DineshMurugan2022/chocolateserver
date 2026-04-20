@@ -61,3 +61,11 @@ export const hGetAll = async (key: string) => {
   if (!isConnected) return {};
   return await client.hGetAll(key);
 };
+
+export const disconnectRedis = async () => {
+  if (isConnected) {
+    await client.disconnect();
+    isConnected = false;
+    console.log('Redis disconnected');
+  }
+};
