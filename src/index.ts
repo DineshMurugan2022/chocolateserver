@@ -21,6 +21,7 @@ import { Server } from 'socket.io';
 import { rateLimit } from 'express-rate-limit';
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy (Render/Vercel)
 const httpServer = createServer(app);
 const corsOptions: cors.CorsOptions = {
   origin: true, // Mirror the request Origin — safe with credentials: true
