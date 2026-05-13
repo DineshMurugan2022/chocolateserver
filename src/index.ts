@@ -24,29 +24,21 @@ const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render/Vercel)
 const httpServer = createServer(app);
 const corsOptions: cors.CorsOptions = {
-  origin: true, // Mirror the request Origin — safe with credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
 };
-
-// CORS Preflight - Manual Handler for maximum reliability
-app.use((req, res, next) => {
-  const origin = req.headers.origin as string;
-  const normalizedOrigin = origin ? origin.replace(/\/$/, '') : '';
-  
-  if (config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  }
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
 
 // Initialize Socket.io with robust CORS
 // origin: true mirrors the request Origin header — safe, standard, and avoids any matching bugs
