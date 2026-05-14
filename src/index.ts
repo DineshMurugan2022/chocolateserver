@@ -26,13 +26,12 @@ const httpServer = createServer(app);
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const normalizedOrigin = origin.replace(/\/$/, '');
-    if (config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
+    const normalizedOrigin = origin ? origin.replace(/\/$/, '') : '';
+    if (!origin || config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      logger.warn(`CORS blocked for origin: ${origin}`);
+      callback(null, false);
     }
   },
   credentials: true,
@@ -128,6 +127,16 @@ app.use((req, res, next) => {
 
 app.use(limiter);
 app.set('socketio', io);
+
+// Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    env: config.node_env
+  });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

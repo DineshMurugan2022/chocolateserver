@@ -1,11 +1,13 @@
 import type { Request, Response } from 'express';
 import Category from '../models/Category.js';
+import { logger } from '../utils/logger.js';
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
     const categories = await Category.find().sort({ name: 1 });
     res.status(200).json(categories);
   } catch (error: unknown) {
+    logger.error('Error fetching categories:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ message });
   }

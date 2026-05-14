@@ -4,6 +4,7 @@ import { uploadImage } from '../utils/cloudinary.js';
 import { getCache, setCache, deleteCache } from '../utils/cache.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
 
 type ProductQuery = {
   $or?: Array<{
@@ -65,6 +66,7 @@ export const getProducts = async (req: Request, res: Response) => {
     
     res.status(200).json(products);
   } catch (error: unknown) {
+    logger.error('Error fetching products:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ message });
   }

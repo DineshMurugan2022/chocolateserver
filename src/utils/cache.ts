@@ -5,16 +5,27 @@ const client = createClient({
   url: config.redis_url
 });
 
-client.on('error', (err) => console.log('Redis Client Error', err));
-
 let isConnected = false;
 
+client.on('connect', () => {
+  isConnected = true;
+  console.log('Redis Client Connected');
+});
+
+client.on('error', (err) => {
+  isConnected = false;
+  console.log('Redis Client Error', err);
+});
+
+client.on('end', () => {
+  isConnected = false;
+  console.log('Redis Client Disconnected');
+});
+
 export const connectRedis = async () => {
-  if (!isConnected) {
+  if (!client.isOpen) {
     try {
       await client.connect();
-      isConnected = true;
-      console.log('Connected to Redis');
     } catch (error) {
       console.error('Could not connect to Redis:', error);
     }
