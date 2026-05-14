@@ -27,10 +27,15 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     const normalizedOrigin = origin ? origin.replace(/\/$/, '') : '';
-    if (!origin || config.allowed_origins.includes(normalizedOrigin) || config.node_env === 'development') {
+    const isAllowed = !origin || 
+                     config.allowed_origins.includes(normalizedOrigin) || 
+                     config.node_env === 'development' ||
+                     normalizedOrigin.endsWith('vercel.app'); // Fail-safe for Vercel
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
-      logger.warn(`CORS blocked for origin: ${origin}`);
+      logger.warn(`CORS blocked for origin: ${origin}. Allowed origins: ${config.allowed_origins.join(', ')}`);
       callback(null, false);
     }
   },
