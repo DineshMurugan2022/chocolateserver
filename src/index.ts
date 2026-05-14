@@ -167,7 +167,9 @@ app.use((err: any, req: any, res: any, next: any) => {
 const startServer = async () => {
   // 1. START LISTENING IMMEDIATELY for Render health checks
   httpServer.listen(PORT, () => {
-    logger.info(`Server is running on port ${PORT}. Connecting to database in background...`);
+    logger.info(`Server is running on port ${PORT}.`);
+    logger.info(`Allowed Origins: ${config.allowed_origins.join(', ')}`);
+    logger.info(`Connecting to database in background...`);
   });
 
   // 2. CONNECT TO DATABASE IN BACKGROUND
