@@ -11,8 +11,8 @@ const generateToken = (id: string) => {
 const setTokenCookie = (res: Response, token: string) => {
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true, // Always true for cross-site cookies
+    sameSite: 'none', // Required for cross-site cookies
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 };
