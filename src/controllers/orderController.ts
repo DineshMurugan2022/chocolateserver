@@ -126,7 +126,11 @@ export const createRazorpayOrder = async (req: AuthRequest<RazorpayOrderBody>, r
     const pendingOrder = await Order.create([pendingOrderData], { session: session ?? null });
 
     await session.commitTransaction();
-    res.status(200).json({ order, orderId: (pendingOrder[0] as IOrder)._id });
+    res.status(200).json({ 
+      order, 
+      orderId: (pendingOrder[0] as IOrder)._id,
+      razorpayOrderId: order.id 
+    });
   } catch (error: unknown) {
     await session.abortTransaction();
     logger.error('Razorpay Order Transaction Error:', error);
