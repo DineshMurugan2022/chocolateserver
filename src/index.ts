@@ -30,7 +30,8 @@ const corsOptions: cors.CorsOptions = {
     const isAllowed = !origin || 
                      config.allowed_origins.includes(normalizedOrigin) || 
                      config.node_env === 'development' ||
-                     normalizedOrigin.endsWith('vercel.app'); // Fail-safe for Vercel
+                     normalizedOrigin.endsWith('vercel.app') || // Fail-safe for Vercel
+                     normalizedOrigin === 'https://british-chocolate.com'; // Fail-safe for production domain
     
     if (isAllowed) {
       callback(null, true);
