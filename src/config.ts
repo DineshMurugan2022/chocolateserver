@@ -20,6 +20,12 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   CLIENT_URL: z.string().default('http://localhost:5173'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -48,5 +54,13 @@ export const config = {
   razorpay: {
     key_id: env.RAZORPAY_KEY_ID,
     key_secret: env.RAZORPAY_KEY_SECRET,
+  },
+  smtp: {
+    host: env.SMTP_HOST || '',
+    port: parseInt(env.SMTP_PORT || '587', 10),
+    user: env.SMTP_USER || '',
+    pass: env.SMTP_PASS || '',
+    secure: env.SMTP_SECURE === 'true',
+    from: env.SMTP_FROM || 'sales@british-chocolate.com',
   }
 };
