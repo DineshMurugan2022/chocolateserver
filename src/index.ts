@@ -9,6 +9,8 @@ import orderRoutes from './routes/orderRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import wishlistRoutes from './routes/wishlistRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
+import inquiryRoutes from './routes/inquiryRoutes.js';
+import workshopRoutes from './routes/workshopRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger.js';
@@ -154,6 +156,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/inquiry', inquiryRoutes);
+app.use('/api/workshop', workshopRoutes);
 
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
