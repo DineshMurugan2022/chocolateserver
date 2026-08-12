@@ -126,19 +126,10 @@ io.on('connection', async (socket) => {
   });
 });
 
-// DB Readiness Guard — return 503 instead of 500 when MongoDB is not connected
-app.use((req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    res.status(503).json({ message: 'Database not ready yet, please retry in a few seconds.' });
-    return;
-  }
-  next();
-});
-
 app.use(limiter);
 app.set('socketio', io);
 
-// Health Check
+// Health Check & DB-independent Routes
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -148,15 +139,25 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes
+app.use('/api/contact', contactRoutes);
+app.use('/api/inquiry', inquiryRoutes);
+
+// DB Readiness Guard — return 503 instead of 500 when MongoDB is not connected
+app.use((req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    res.status(503).json({ message: 'Database not ready yet, please retry in a few seconds.' });
+    return;
+  }
+  next();
+});
+
+// DB-dependent Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/reviews', reviewRoutes);
-app.use('/api/contact', contactRoutes);
-app.use('/api/inquiry', inquiryRoutes);
 app.use('/api/workshop', workshopRoutes);
 
 // Swagger Documentation
