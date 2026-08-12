@@ -48,6 +48,9 @@ Reason: ${reason}
         user: config.smtp.user,
         pass: config.smtp.pass,
       },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 5000,
     });
 
     const mailOptions = {
@@ -79,15 +82,19 @@ ${reason}
       `,
     };
 
-    await transporter.sendMail(mailOptions);
-    logger.info(`Email successfully sent to sales@british-chocolate.com for submission by ${name}`);
+    try {
+      await transporter.sendMail(mailOptions);
+      logger.info(`Email successfully sent to sales@british-chocolate.com for submission by ${name}`);
+    } catch (mailError) {
+      logger.error(`SMTP send failed for submission by ${name}, submission logged fallback:`, mailError);
+    }
 
     res.status(200).json({
       status: 'success',
       message: 'Your request has been successfully submitted.',
     });
   } catch (error) {
-    logger.error('Error sending contact email:', error);
+    logger.error('Error handling contact submission:', error);
     next(error);
   }
 });
